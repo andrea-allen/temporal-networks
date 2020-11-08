@@ -116,3 +116,12 @@ def run_multiple_sims(layer1, layer2, beta, times, T):
     plt.plot(np.arange(2*T), error, label='aggregation error')
     plt.legend(loc='lower right')
     plt.show()
+    return error
+
+def identity_experiment():
+    GA = nx.generators.connected_watts_strogatz_graph(1000, 3, .02)
+    A = np.array(nx.adjacency_matrix(GA).todense())
+    error = run_multiple_sims(GA, GA, .2, 50, 100)
+    plt.plot(np.arange(2*100), error, label='aggregation error')
+    plt.legend(loc='lower right')
+    plt.show()

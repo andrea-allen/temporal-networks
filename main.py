@@ -12,5 +12,6 @@ if __name__ == '__main__':
     rc('font', **{'family': 'sans-serif', 'sans-serif': ['Helvetica']})
     rc('text', usetex=True)
     print('Temporal Networks - Andrea Allen, 2020')
-    socio_patterns_ex.run_one_layer()
+    sample_sir_sims.identity_experiment()
+    # socio_patterns_ex.error_over_time(30, '../tij_SFHH.dat_')
     # sample_sir_sims.compare(1000, .05, 0) #determine a beta value per timestep
