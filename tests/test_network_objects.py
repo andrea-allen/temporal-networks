@@ -391,3 +391,50 @@ class CompressorTests(unittest.TestCase):
                                              Layer(3, 5, 0.8, same_array)])
         # ASSERT
         self.assertTrue(could_be_network_1.equals(compressed_net) or could_be_network_2.equals(compressed_net))
+
+    def test_total_aggregate(self):
+        # Test that compressing at level 1, length layers iterations, gives the total sum normalized
+        # SETUP
+        some_array = np.array([[0, 1, 0, 1],
+                            [1, 0, 1, 0],
+                            [0, 1, 0, 0],
+                            [1, 0, 0, 0]])
+        other_array = np.array([[0, 0, 0, 1],
+                            [0, 0, 2, 0],
+                            [0, 2, 0, 0],
+                            [1, 0, 0, 0]])
+        third_array = np.array([[0, 0, 0, 1],
+                            [0, 0, 2, 2],
+                            [0, 2, 0, 0],
+                            [1, 2, 0, 0]])
+        A = Layer(1, 2, 0.8,
+                  some_array)
+        B = Layer(2, 3, 0.8,
+                  other_array)
+        C = Layer(3, 4, 0.8,
+                  third_array)
+        D = Layer(4, 5, 0.8,
+                  other_array)
+        E = Layer(5, 6, 0.8,
+                  some_array)
+        F = Layer(6, 7, 0.8,
+                  some_array)
+        temporal_net = TemporalNetwork([A, B, C, D, E, F])
+
+        # ACT
+        # optimal
+        compressed_net = Compressor.compress(temporal_net, level=1, optimal=True, iterations=5)
+        # random
+        random_net = Compressor.compress(temporal_net, level=1, optimal=False, iterations=5)
+        random_net2 = Compressor.compress(temporal_net, level=1, optimal=False, iterations=5)
+        random_net3 = Compressor.compress(temporal_net, level=1, optimal=False, iterations=5)
+
+        # ASSERT
+        self.assertTrue(np.array_equal(compressed_net.layers[0].A, (some_array+other_array+third_array+other_array
+                                                                    +some_array+some_array)/6))
+        self.assertTrue(np.array_equal(random_net.layers[0].A, (some_array + other_array + third_array + other_array
+                                                                    + some_array + some_array) / 6))
+        self.assertTrue(np.array_equal(random_net2.layers[0].A, (some_array + other_array + third_array + other_array
+                                                                + some_array + some_array) / 6))
+        self.assertTrue(np.array_equal(random_net3.layers[0].A, (some_array + other_array + third_array + other_array
+                                                                + some_array + some_array) / 6))
