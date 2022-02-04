@@ -140,14 +140,15 @@ class Compressor:
     @staticmethod
     def _random_compression(temporal_net, level):
         # TODO: level might be required to be 1
-        random_pair_idxs = np.random.choice(list(np.arange(temporal_net.length-1)), size=level, replace=False)
+        random_idx = np.random.randint(0, temporal_net.length-1)
+        # random_pair_idxs = np.random.choice(list(np.arange(temporal_net.length-1)), size=level, replace=False)
         new_networks = []
         for idx, layer in enumerate(temporal_net.layers):
-            if idx in random_pair_idxs:
+            if idx == random_idx:
                 new_networks.append(Compressor.aggregate(temporal_net.layers[idx], temporal_net.layers[idx+1]))
-            if idx-1 in random_pair_idxs:
+            if idx-1 == random_idx:
                 pass
-            elif idx not in random_pair_idxs:
+            elif idx != random_idx:
                 new_networks.append(temporal_net.layers[idx])
         return new_networks
 

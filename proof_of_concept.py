@@ -5,20 +5,19 @@ import deterministic
 import poc_compression
 import network_objects
 
-### Creating the networks:
-N = 50
-G1, A1 = poc_compression.configuration_model_graph(N)
-G2, A2 = poc_compression.barbell_graph(N)
-G3, A3 = poc_compression.configuration_model_graph(N)
-G4, A4 = poc_compression.erdos_renyi_graph(N, .3)
-G5, A5 = poc_compression.configuration_model_graph(N)
-G6, A6 = poc_compression.erdos_renyi_graph(N, .1)
-G7, A7 = poc_compression.configuration_model_graph(N)
-G8, A8 = poc_compression.erdos_renyi_graph(N, .15)
-G9, A9 = poc_compression.cycle_graph(N)
-G10, A10 = poc_compression.configuration_model_graph(N)
-
 def random_temporal_network_mix(num_layers, t_interval, beta):
+    ### Creating the networks:
+    N = 50
+    G1, A1 = poc_compression.configuration_model_graph(N)
+    G2, A2 = poc_compression.barbell_graph(N)
+    G3, A3 = poc_compression.configuration_model_graph(N)
+    G4, A4 = poc_compression.erdos_renyi_graph(N, .3)
+    G5, A5 = poc_compression.configuration_model_graph(N)
+    G6, A6 = poc_compression.erdos_renyi_graph(N, .1)
+    G7, A7 = poc_compression.configuration_model_graph(N)
+    G8, A8 = poc_compression.erdos_renyi_graph(N, .15)
+    G9, A9 = poc_compression.cycle_graph(N)
+    G10, A10 = poc_compression.configuration_model_graph(N)
     options = [A1, A2, A2, A2, A2, A3, A4, A5, A6, A7, A8, A9, A10]
     layers = []
     current_start_t = 0
@@ -41,13 +40,14 @@ def random_temporal_network_mix(num_layers, t_interval, beta):
 
 ## TO THINK ABOUT FOR TOMORROW: HOW BEST TO HANDLE THE TIME SERIES DIFFERENTIAL
 # do something with binning:
-def digitize_me(time_vector, infected):
+def digitize_me(time_vector, infected, number_layers, t_interval):
     digitized = np.digitize(np.array(time_vector), np.linspace(0,number_layers*t_interval,50))
     bin_means = [np.array(time_vector)[digitized == i].mean() for i in range(1, len(np.linspace(0,number_layers*t_interval,50)))]
     bins_infected = [np.array(infected)[digitized == i].mean() for i in range(1, len(np.linspace(0,number_layers*t_interval,50)))]
     return bin_means, bins_infected
 
 def run_random(temporal_network, t_interval, beta, number_layers, levels, iters):
+    N = len(temporal_network.layers[0].A)
     random_compressed = network_objects.Compressor.compress(temporal_network, level=levels, iterations=iters,
                                                             optimal=False)
     model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N),
@@ -55,25 +55,27 @@ def run_random(temporal_network, t_interval, beta, number_layers, levels, iters)
                                           networks=random_compressed.get_time_network_map())
     solution_t_random, solution_p = model.solve_model()
     random_solution = np.sum(solution_p, axis=0)
-    d = digitize_me(solution_t_random, random_solution)
+    d = digitize_me(solution_t_random, random_solution, number_layers, t_interval)
     return d[0], d[1], random_compressed
 
 def run_optimal(temporal_network, t_interval, beta, number_layers, levels, iters):
+    N = len(temporal_network.layers[0].A)
     optimal_network = network_objects.Compressor.compress(temporal_network, level=levels, iterations=iters)
     model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N),
                                           end_time=number_layers * t_interval,
                                           networks=optimal_network.get_time_network_map())
     solution_t_compressed, solution_p = model.solve_model()
     compressed_solution = np.sum(solution_p, axis=0)
-    d = digitize_me(solution_t_compressed, compressed_solution)
+    d = digitize_me(solution_t_compressed, compressed_solution, number_layers, t_interval)
     return d[0], d[1], optimal_network
 
 def run_temporal(temporal_network, t_interval, beta, number_layers, levels, iters):
+    N = len(temporal_network.layers[0].A)
     model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=number_layers*t_interval,
                             networks=temporal_network.get_time_network_map())
     solution_t_temporal, solution_p = model.solve_model()
     temporal_solution = np.sum(solution_p, axis=0)
-    d = digitize_me(solution_t_temporal, temporal_solution)
+    d = digitize_me(solution_t_temporal, temporal_solution, number_layers, t_interval)
     return d[0], d[1], temporal_network
 
 
@@ -81,6 +83,9 @@ def one_round(temporal_network, t_interval, beta, number_layers, levels, iters, 
     temp_t, temp_inf, temp_net = run_temporal(temporal_network, t_interval, beta, number_layers, levels, iters)
     rand_t, rand_inf, rand_net = run_random(temporal_network, t_interval, beta, number_layers, levels, iters)
     opt_t, opt_inf, opt_net = run_optimal(temporal_network, t_interval, beta, number_layers, levels, iters)
+    print(f"opt net layers {opt_net.length}")
+    print(f"temp net layers {temp_net.length}")
+    print(f"rand net layers {rand_net.length}")
 
     ##########
     if plot:
@@ -122,8 +127,10 @@ def one_round(temporal_network, t_interval, beta, number_layers, levels, iters, 
     return total_optimal_error, total_random_error
 
 def run_multiple(temporal_network, t_interval, beta, number_layers, levels, iters, rand_only=False, temp_inf=None):
+    print(iters)
     if rand_only:
         rand_t, rand_inf, rand_net = run_random(temporal_network, t_interval, beta, number_layers, levels, iters)
+        print(f"rand net layers {rand_net.length}")
         total_random_error = round(np.sum(np.abs(-np.array(temp_inf) + np.array(rand_inf))), 2)
         return total_random_error
     else:
@@ -132,52 +139,61 @@ def run_multiple(temporal_network, t_interval, beta, number_layers, levels, iter
         opt_t, opt_inf, opt_net = run_optimal(temporal_network, t_interval, beta, number_layers, levels, iters)
         total_optimal_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(opt_inf))), 2)
         total_random_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(rand_inf))), 2)
+        print(f"opt net layers {opt_net.length}")
+        print(f"temp net layers {temp_net.length}")
+        print(f"rand net layers {rand_net.length}")
         return total_optimal_error, total_random_error, temp_inf
 
-t_interval = 3
-beta = .002
-number_layers = 30
+def experiment():
+    this_t_interval = 4
+    this_beta = .002
+    this_number_layers = 30
 
-# temporal_network = random_temporal_network_mix(number_layers, t_interval, beta)
-# print(temporal_network.length)
-# one_round(temporal_network, t_interval, beta, number_layers, levels=1, iters=temporal_network.length-1, plot=True)
-# plt.show()
+    # temporal_network = random_temporal_network_mix(number_layers, t_interval, beta)
+    # print(temporal_network.length)
+    # one_round(temporal_network, t_interval, beta, number_layers, levels=1, iters=temporal_network.length-1, plot=True)
+    # plt.show()
 
-# for lev in range(5):
-temporal_network = random_temporal_network_mix(number_layers, t_interval, beta)
-iter_range = temporal_network.length
-ensemble_length = 5
-random_errors = np.zeros((ensemble_length, iter_range))
-optimal_errors = np.zeros((ensemble_length, iter_range))
-one_round(temporal_network, t_interval, beta, number_layers, levels=1, iters=15, plot=True)
-plt.show()
-lev = 1
-for i in range(iter_range):
-    print(lev, i)
-    _total_opt, total_rand, _temp = run_multiple(temporal_network, t_interval, beta, number_layers, lev, iters=i)
-    random_errors[0][i] = total_rand
-    optimal_errors[0][i] = _total_opt
-    for t in range(1, ensemble_length):
-        # TODO make this so it doesn't run temporal and optimal a hundred times
-        total_rand = run_multiple(temporal_network, t_interval, beta, number_layers, levels=lev, iters=i, rand_only=True, temp_inf=_temp)
-        random_errors[t][i] = total_rand
-        optimal_errors[t][i] = _total_opt
+    # for lev in range(5):
+    this_temporal_network = random_temporal_network_mix(this_number_layers, this_t_interval, this_beta)
+    iter_range = this_temporal_network.length
+    ensemble_length = 5
+    random_errors = np.zeros((ensemble_length, iter_range))
+    optimal_errors = np.zeros((ensemble_length, iter_range))
+    one_round(this_temporal_network, this_t_interval, this_beta, this_number_layers, levels=1, iters=19, plot=True)
 
-plt.plot(np.mean(random_errors, axis=0), color='y')
-std_random = np.sqrt(np.var(random_errors, axis=0))
-above_r = np.mean(random_errors, axis=0) + std_random
-below_r = np.mean(random_errors, axis=0) - std_random
-plt.fill_between(np.arange(iter_range), below_r, above_r, color='y', alpha=0.4)
-plt.plot(np.mean(optimal_errors, axis=0), color='m')
-std_opt = np.sqrt(np.var(optimal_errors, axis=0))
-above_o = np.mean(optimal_errors, axis=0) + std_opt
-below_o = np.mean(optimal_errors, axis=0) - std_opt
-plt.fill_between(np.arange(iter_range), below_o, above_o, color='m', alpha=0.4)
-# plt.xticks(list(int(np.arange(0, iter_range+1))))
-plt.xlabel('Iterations')
-plt.ylabel('Error from fully temporal')
-plt.show()
+    plt.show()
+    lev = 1
+    for i in range(iter_range):
+        print(lev, i)
+        _total_opt, total_rand, _temp = run_multiple(this_temporal_network, this_t_interval, this_beta, this_number_layers, lev, iters=i)
+        random_errors[0][i] = total_rand
+        optimal_errors[0][i] = _total_opt
+        for t in range(1, ensemble_length):
+            # TODO make this so it doesn't run temporal and optimal a hundred times
+            total_rand = run_multiple(this_temporal_network, this_t_interval, this_beta, this_number_layers, levels=lev, iters=i, rand_only=True, temp_inf=_temp)
+            random_errors[t][i] = total_rand
+            optimal_errors[t][i] = _total_opt
 
-print(random_errors)
+    plt.plot(np.mean(random_errors, axis=0), label='mean random', color='y')
+    std_random = np.sqrt(np.var(random_errors, axis=0))
+    above_r = np.mean(random_errors, axis=0) + std_random
+    below_r = np.mean(random_errors, axis=0) - std_random
+    plt.fill_between(np.arange(iter_range), below_r, above_r, color='y', alpha=0.4)
+    plt.plot(np.mean(optimal_errors, axis=0), color='m', label='optimal')
+    std_opt = np.sqrt(np.var(optimal_errors, axis=0))
+    above_o = np.mean(optimal_errors, axis=0) + std_opt
+    below_o = np.mean(optimal_errors, axis=0) - std_opt
+    plt.fill_between(np.arange(iter_range), below_o, above_o, color='m', alpha=0.4)
+    # plt.xticks(np.linspace(0, iter_range+1, 10))
+    # plt.xticks(list(int(np.arange(0, iter_range+1))))
+    plt.xlabel('Iterations')
+    plt.ylabel('Total error against fully temporal')
+    plt.legend()
+    plt.show()
+
+    print(random_errors)
+
+experiment()
 
 
