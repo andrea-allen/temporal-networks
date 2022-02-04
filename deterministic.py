@@ -220,7 +220,6 @@ class TemporalSIModel:
         time_series_result = []
         node_probabilities = [[] for n in range(self.N)]
         steps_per_interval = int(np.round(total_time_steps/len(self.switch_times), 0))
-        print(steps_per_interval)
         for switchtime in self.switch_times:
             self.current_switch_time = switchtime
             # switchtime_solution = scipy.integrate.solve_ivp(self.odes_si, t_span=[self.start_time,

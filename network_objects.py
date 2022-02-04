@@ -86,6 +86,33 @@ class Compressor:
 
     @staticmethod
     def _optimal_compression(temporal_net, level):
+        if level==1:
+            nonshift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=0))
+            shift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=1))
+            best_key_nonshift = min(nonshift_epsilons, key=nonshift_epsilons.get)
+            best_key_shift = min(shift_epsilons, key=shift_epsilons.get)
+            if shift_epsilons[best_key_shift] < nonshift_epsilons[best_key_nonshift]:
+                best_key = best_key_shift
+                pairs = temporal_net.get_ordered_pairs(shift=1)
+            else:
+                best_key = best_key_nonshift
+                pairs = temporal_net.get_ordered_pairs(shift=0)
+
+            new_networks = []
+            pairs_to_compress = []
+            pairs_to_compress.append(pairs[best_key])
+            for pair in pairs:
+                if pair in pairs_to_compress:
+                    new_networks.append(Compressor.aggregate(pair[0], pair[1]))
+                else:
+                    try:
+                        new_networks.extend([pair[0], pair[1]])
+                    except TypeError:
+                        new_networks.extend([pair])
+            return new_networks
+
+        #### shifting, for higher level
+        # combine these later
         nonshift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=0))
         shift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=1))
         if sum(nonshift_epsilons.values()) > sum(shift_epsilons.values()):
@@ -112,21 +139,16 @@ class Compressor:
 
     @staticmethod
     def _random_compression(temporal_net, level):
-        shift = 0 if np.random.random() <= .5 else 1
-        pairs = temporal_net.get_ordered_pairs(shift)
-        random_pair_idxs = np.random.choice(list(np.arange(0, len(pairs))), size=min(level, len(pairs)), replace=False)
+        # TODO: level might be required to be 1
+        random_pair_idxs = np.random.choice(list(np.arange(temporal_net.length-1)), size=level, replace=False)
         new_networks = []
-        for idx, pair in enumerate(pairs):
+        for idx, layer in enumerate(temporal_net.layers):
             if idx in random_pair_idxs:
-                try:
-                    new_networks.append(Compressor.aggregate(pair[0], pair[1]))
-                except TypeError:
-                    new_networks.append(pair)
-            else:
-                try:
-                    new_networks.extend([pair[0], pair[1]])
-                except TypeError:
-                    new_networks.extend([pair])
+                new_networks.append(Compressor.aggregate(temporal_net.layers[idx], temporal_net.layers[idx+1]))
+            if idx-1 in random_pair_idxs:
+                pass
+            elif idx not in random_pair_idxs:
+                new_networks.append(temporal_net.layers[idx])
         return new_networks
 
     @staticmethod
