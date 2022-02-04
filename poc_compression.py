@@ -73,31 +73,31 @@ def barbell_graph(N):
     adj = np.array(nx.adjacency_matrix(G).todense())
     return G, adj
 
-
-### Creating the networks:
-N = 100
-G1, A1 = configuration_model_graph(N)
-G2, A2 = barbell_graph(N)
-G3, A3 = configuration_model_graph(N)
-G4, A4 = barbell_graph(N)
-G5, A5 = configuration_model_graph(N)
-G6, A6 = erdos_renyi_graph(N, .1)
-G7, A7 = configuration_model_graph(N)
-G8, A8 = erdos_renyi_graph(N, .05)
-G9, A9 = cycle_graph(N)
-
-fig, ax = plt.subplots(3, 3)
-nx.draw(G1, ax=ax[0, 0], node_size=2, width=0.5, node_color='red')
-nx.draw(G2, ax=ax[0, 1], node_size=2, width=0.5, node_color='orange')
-nx.draw(G3, ax=ax[0, 2], node_size=2, width=0.5, node_color='purple')
-nx.draw(G4, ax=ax[1, 0], node_size=2, width=0.5, node_color='green')
-nx.draw(G5, ax=ax[1, 1], node_size=2, width=0.5, node_color='blue')
-nx.draw(G6, ax=ax[1, 2], node_size=2, width=0.5, node_color='gold')
-nx.draw(G7, ax=ax[2, 0], node_size=2, width=0.5, node_color='pink')
-nx.draw(G8, ax=ax[2, 1], node_size=2, width=0.5, node_color='cyan')
-nx.draw(G9, ax=ax[2, 2], node_size=2, width=0.5, node_color='forestgreen')
-plt.show()
-# _, A6 = erdos_renyi_graph(N, .1)
+#
+# ### Creating the networks:
+# N = 100
+# G1, A1 = configuration_model_graph(N)
+# G2, A2 = barbell_graph(N)
+# G3, A3 = configuration_model_graph(N)
+# G4, A4 = barbell_graph(N)
+# G5, A5 = configuration_model_graph(N)
+# G6, A6 = erdos_renyi_graph(N, .1)
+# G7, A7 = configuration_model_graph(N)
+# G8, A8 = erdos_renyi_graph(N, .05)
+# G9, A9 = cycle_graph(N)
+#
+# fig, ax = plt.subplots(3, 3)
+# nx.draw(G1, ax=ax[0, 0], node_size=2, width=0.5, node_color='red')
+# nx.draw(G2, ax=ax[0, 1], node_size=2, width=0.5, node_color='orange')
+# nx.draw(G3, ax=ax[0, 2], node_size=2, width=0.5, node_color='purple')
+# nx.draw(G4, ax=ax[1, 0], node_size=2, width=0.5, node_color='green')
+# nx.draw(G5, ax=ax[1, 1], node_size=2, width=0.5, node_color='blue')
+# nx.draw(G6, ax=ax[1, 2], node_size=2, width=0.5, node_color='gold')
+# nx.draw(G7, ax=ax[2, 0], node_size=2, width=0.5, node_color='pink')
+# nx.draw(G8, ax=ax[2, 1], node_size=2, width=0.5, node_color='cyan')
+# nx.draw(G9, ax=ax[2, 2], node_size=2, width=0.5, node_color='forestgreen')
+# plt.show()
+# # _, A6 = erdos_renyi_graph(N, .1)
 
 # ### BASE CASE: ALL SAME NETWORK
 # _, A1 = configuration_model_graph(N)
@@ -112,85 +112,85 @@ plt.show()
 # _, A8 =configuration_model_graph(N)
 # _, A9 =configuration_model_graph(N)
 
-
-### Running them in full temporal mode:
-# t_intervals = int(np.linspace(10, 61, 6))
-t_interval = 10
-beta = .005
-model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=6*t_interval,
-                        networks={t_interval: A1, 2*t_interval: A2, 3*t_interval: A3,
-                                  4*t_interval: A4, 5*t_interval: A5, 6*t_interval: A6, 7*t_interval: A7,
-                                  8*t_interval: A8, 9*t_interval: A9})
-solution_t_temporal, solution_p = model.solve_model()
-temporal_timeseries = np.sum(solution_p, axis=0)
-plt.plot(solution_t_temporal, temporal_timeseries, label='fully temporal')
-model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=6*t_interval,
-                        networks={9*t_interval: (A1+A2+A3+A4+A5+A6+A7+A8+A9)/9})
-solution_t_agg, solution_p = model.solve_model()
-aggregate_timeseries = np.sum(solution_p, axis=0)
-plt.plot(solution_t_agg, aggregate_timeseries, label='fully aggregated')
-plt.legend()
-plt.show()
-# So, as we can see from this plot, the number of infected individuals agrees at the end, but the
-# timeseries themselves look drastically different. We eventually want to do a good job of modeling
-# the correct timeseries, by doing a sort of step-wise integration where we can compress SOME but not
-# all of the layers by taking their end errors (not caring about the time series for tiny tau)
-# so they build up a good fitting time series that looks like this one
-
-# Example by hand: from looking at the networks, this version might make the most sense for
-# compression (then we'll do it via an error approximation):
+#
+# ### Running them in full temporal mode:
+# # t_intervals = int(np.linspace(10, 61, 6))
+# t_interval = 10
+# beta = .005
 # model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=6*t_interval,
-#                         networks={t_interval: A1, 2*t_interval: A2, 6*t_interval: (A3+A4+A5+A6)/4})
-# solution_t, solution_p = model.solve_model()
-# partial_aggregate = np.sum(solution_p, axis=0)
-plt.plot(solution_t_temporal, temporal_timeseries, label='fully temporal')
-plt.plot(solution_t_agg, aggregate_timeseries, label='fully aggregated')
-# plt.plot(solution_t, partial_aggregate, label='partial aggregated')
-plt.legend()
-plt.show()
+#                         networks={t_interval: A1, 2*t_interval: A2, 3*t_interval: A3,
+#                                   4*t_interval: A4, 5*t_interval: A5, 6*t_interval: A6, 7*t_interval: A7,
+#                                   8*t_interval: A8, 9*t_interval: A9})
+# solution_t_temporal, solution_p = model.solve_model()
+# temporal_timeseries = np.sum(solution_p, axis=0)
+# plt.plot(solution_t_temporal, temporal_timeseries, label='fully temporal')
+# model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=6*t_interval,
+#                         networks={9*t_interval: (A1+A2+A3+A4+A5+A6+A7+A8+A9)/9})
+# solution_t_agg, solution_p = model.solve_model()
+# aggregate_timeseries = np.sum(solution_p, axis=0)
+# plt.plot(solution_t_agg, aggregate_timeseries, label='fully aggregated')
+# plt.legend()
+# plt.show()
+# # So, as we can see from this plot, the number of infected individuals agrees at the end, but the
+# # timeseries themselves look drastically different. We eventually want to do a good job of modeling
+# # the correct timeseries, by doing a sort of step-wise integration where we can compress SOME but not
+# # all of the layers by taking their end errors (not caring about the time series for tiny tau)
+# # so they build up a good fitting time series that looks like this one
+#
+# # Example by hand: from looking at the networks, this version might make the most sense for
+# # compression (then we'll do it via an error approximation):
+# # model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=6*t_interval,
+# #                         networks={t_interval: A1, 2*t_interval: A2, 6*t_interval: (A3+A4+A5+A6)/4})
+# # solution_t, solution_p = model.solve_model()
+# # partial_aggregate = np.sum(solution_p, axis=0)
+# plt.plot(solution_t_temporal, temporal_timeseries, label='fully temporal')
+# plt.plot(solution_t_agg, aggregate_timeseries, label='fully aggregated')
+# # plt.plot(solution_t, partial_aggregate, label='partial aggregated')
+# plt.legend()
+# plt.show()
 
-### Computing pairwise compression errors:
-pair_errors = {('A1', 'A2'): 0, ('A2', 'A3'): 0, ('A3', 'A4'): 0, ('A4', 'A5'): 0, ('A5', 'A6'): 0}
-pair_ids = {'A1':A1, 'A2':A2, 'A3':A3, 'A4':A4, 'A5':A5, 'A6':A6}
-pair_order = {'A1': 1*t_interval, 'A2': t_interval*2, 'A3': t_interval*3, 'A4': t_interval*4, 'A5': t_interval*5, 'A6': t_interval*6} # find a better way to store this info
-pair_order_flip = {1*t_interval: A1, t_interval*2: A2, t_interval*3: A3, t_interval*4: A4, t_interval*5: A5, t_interval*6: A6} # find a better way to store this info
-for pair in list(pair_errors.keys()):
-    pair_errors[pair] = new_matexp_approximation(pair_ids[pair[0]], pair_ids[pair[1]], t_interval, beta)
-
-sorted_pair_error = {k: v for k, v in sorted(pair_errors.items(), key=lambda item: item[1])}
-print(sorted_pair_error)
-
-#### TODO: better way to automatically compute errors and compress along the way
-## the original time-to-network map
-end_time_network_map = {t_interval: A1, 2*t_interval: A2, 3*t_interval: A3,
-                                  4*t_interval: A4, 5*t_interval: A5, 6*t_interval: A6, 7*t_interval: A7,
-                                  8*t_interval: A8, 9*t_interval: A9}
+# ### Computing pairwise compression errors:
+# pair_errors = {('A1', 'A2'): 0, ('A2', 'A3'): 0, ('A3', 'A4'): 0, ('A4', 'A5'): 0, ('A5', 'A6'): 0}
+# pair_ids = {'A1':A1, 'A2':A2, 'A3':A3, 'A4':A4, 'A5':A5, 'A6':A6}
+# pair_order = {'A1': 1*t_interval, 'A2': t_interval*2, 'A3': t_interval*3, 'A4': t_interval*4, 'A5': t_interval*5, 'A6': t_interval*6} # find a better way to store this info
+# pair_order_flip = {1*t_interval: A1, t_interval*2: A2, t_interval*3: A3, t_interval*4: A4, t_interval*5: A5, t_interval*6: A6} # find a better way to store this info
+# for pair in list(pair_errors.keys()):
+#     pair_errors[pair] = new_matexp_approximation(pair_ids[pair[0]], pair_ids[pair[1]], t_interval, beta)
+#
+# sorted_pair_error = {k: v for k, v in sorted(pair_errors.items(), key=lambda item: item[1])}
+# print(sorted_pair_error)
+#
+# #### TODO: better way to automatically compute errors and compress along the way
+# ## the original time-to-network map
+# end_time_network_map = {t_interval: A1, 2*t_interval: A2, 3*t_interval: A3,
+#                                   4*t_interval: A4, 5*t_interval: A5, 6*t_interval: A6, 7*t_interval: A7,
+#                                   8*t_interval: A8, 9*t_interval: A9}
 ### setting up a new one that can be modified
-new_end_time_network_map = {}
-# for k, v in end_time_network_map.items():
-#     new_end_time_network_map[k] = v
-### compressing pairs one by one
-errors_by_start_time = {}
-## now a new dict where the value for each time stamp is the error between that matrix and the next one
-for timestamp, matrix in end_time_network_map.items():
-    try:
-        errors_by_start_time[timestamp] = new_matexp_approximation(end_time_network_map[timestamp], end_time_network_map[timestamp + t_interval], t_interval, beta)
-    except KeyError:
-        continue
-sorted_pair_error = {k: v for k, v in sorted(errors_by_start_time.items(), key=lambda item: item[1])}
-compression_amt = 6
-times_to_compress = list(sorted_pair_error.keys())[:compression_amt]
-# now times_to_compress are the timestamps to compress that with the next timestamp
-for t in times_to_compress:
-    matrix_one = end_time_network_map[t]
-    matrix_two = end_time_network_map[t+t_interval]
-    compressed_matrix = (matrix_one+matrix_two)/2
-    new_end_time_network_map[t+t_interval] = compressed_matrix # TODO need to make it so that not just all pairs get smooshed, but multiple consecutive networks in a row get smooshed
-for t in list(end_time_network_map.keys()):
-    if t not in new_end_time_network_map.keys():
-        new_end_time_network_map[t] = end_time_network_map[t]
-
-####
+# new_end_time_network_map = {}
+# # for k, v in end_time_network_map.items():
+# #     new_end_time_network_map[k] = v
+# ### compressing pairs one by one
+# errors_by_start_time = {}
+# ## now a new dict where the value for each time stamp is the error between that matrix and the next one
+# for timestamp, matrix in end_time_network_map.items():
+#     try:
+#         errors_by_start_time[timestamp] = new_matexp_approximation(end_time_network_map[timestamp], end_time_network_map[timestamp + t_interval], t_interval, beta)
+#     except KeyError:
+#         continue
+# sorted_pair_error = {k: v for k, v in sorted(errors_by_start_time.items(), key=lambda item: item[1])}
+# compression_amt = 6
+# times_to_compress = list(sorted_pair_error.keys())[:compression_amt]
+# # now times_to_compress are the timestamps to compress that with the next timestamp
+# for t in times_to_compress:
+#     matrix_one = end_time_network_map[t]
+#     matrix_two = end_time_network_map[t+t_interval]
+#     compressed_matrix = (matrix_one+matrix_two)/2
+#     new_end_time_network_map[t+t_interval] = compressed_matrix # TODO need to make it so that not just all pairs get smooshed, but multiple consecutive networks in a row get smooshed
+# for t in list(end_time_network_map.keys()):
+#     if t not in new_end_time_network_map.keys():
+#         new_end_time_network_map[t] = end_time_network_map[t]
+#
+# ####
 
 ### Picking the best compression:
 # def compress_3(matrices):
@@ -226,25 +226,25 @@ for t in list(end_time_network_map.keys()):
 # # TODO: need to handle when 2 pairs contain one of the same index
 
 
-# For now, just doing it by hand because it's complicated.
-# pairs to compress are:
-#('A5', 'A6'): 0.009870406874999994, ('A3', 'A4'): 0.06965407687499998
-model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=9*t_interval,
-                        networks=new_end_time_network_map)
-solution_t_compressed, solution_p = model.solve_model()
-compressed_aggregate = np.sum(solution_p, axis=0)
-plt.plot(solution_t_temporal, temporal_timeseries, label='fully temporal', color='m', lw=4)
-plt.plot(solution_t_agg, aggregate_timeseries, label='fully aggregated', color='y', lw=4)
-# plt.plot(solution_t, partial_aggregate, label='partial aggregated')
-plt.plot(solution_t_compressed, compressed_aggregate, label='compression algorithm', color='c', lw=2.5)
-## vertical lines to show compression
-plt.vlines(end_time_network_map.keys(), ymin=0, ymax=100, ls=':', color='m', lw=1, alpha=0.5)
-plt.vlines(list(set(end_time_network_map.keys()).difference(set(times_to_compress))), ymin=0, ymax=100, ls='--', color='c', lw=1.5)
-plt.xlabel('Time')
-plt.ylabel('Number nodes infected')
-plt.xticks(list(end_time_network_map.keys()))
-plt.legend()
-plt.show()
+# # For now, just doing it by hand because it's complicated.
+# # pairs to compress are:
+# #('A5', 'A6'): 0.009870406874999994, ('A3', 'A4'): 0.06965407687499998
+# model = deterministic.TemporalSIModel(params={'beta': beta}, y_init=np.full(N, 1 / N), end_time=9*t_interval,
+#                         networks=new_end_time_network_map)
+# solution_t_compressed, solution_p = model.solve_model()
+# compressed_aggregate = np.sum(solution_p, axis=0)
+# plt.plot(solution_t_temporal, temporal_timeseries, label='fully temporal', color='m', lw=4)
+# plt.plot(solution_t_agg, aggregate_timeseries, label='fully aggregated', color='y', lw=4)
+# # plt.plot(solution_t, partial_aggregate, label='partial aggregated')
+# plt.plot(solution_t_compressed, compressed_aggregate, label='compression algorithm', color='c', lw=2.5)
+# ## vertical lines to show compression
+# plt.vlines(end_time_network_map.keys(), ymin=0, ymax=100, ls=':', color='m', lw=1, alpha=0.5)
+# plt.vlines(list(set(end_time_network_map.keys()).difference(set(times_to_compress))), ymin=0, ymax=100, ls='--', color='c', lw=1.5)
+# plt.xlabel('Time')
+# plt.ylabel('Number nodes infected')
+# plt.xticks(list(end_time_network_map.keys()))
+# plt.legend()
+# plt.show()
 
 
 ### Running them in compressed mode:
