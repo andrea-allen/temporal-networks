@@ -4,10 +4,13 @@ import networkx as nx
 import deterministic
 import poc_compression
 import network_objects
+import seaborn as sns
+import socio_patterns_ex
+from epintervene.simobjects import network as netbd
 
 def random_temporal_network_mix(num_layers, t_interval, beta):
     ### Creating the networks:
-    N = 50
+    N = 100
     G1, A1 = poc_compression.configuration_model_graph(N)
     G2, A2 = poc_compression.barbell_graph(N)
     G3, A3 = poc_compression.configuration_model_graph(N)
@@ -86,44 +89,40 @@ def one_round(temporal_network, t_interval, beta, number_layers, levels, iters, 
     print(f"opt net layers {opt_net.length}")
     print(f"temp net layers {temp_net.length}")
     print(f"rand net layers {rand_net.length}")
+    total_optimal_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(opt_inf))), 2)
+    total_random_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(rand_inf))), 2)
 
     ##########
     if plot:
-        plt.figure('results')
-        plt.subplot(211)
-        plt.plot(temp_t, temp_inf, label='fully temporal', color='c', lw=3)
-    # d = digitize_me(temp_t, temp_inf)
-    # plt.plot(d[0], d[1], label='fully temporal', color='c', lw=3)
-    if plot:
-        plt.plot(opt_t, opt_inf, label='optimal compressed temporal', color='m', lw=2, alpha=0.6)
-    # d2 = digitize_me(opt_t, opt_inf)
-    # plt.plot(d2[0], d2[1], label='optimal compressed temporal', color='m', lw=2, alpha=0.6)
-    if plot:
-        plt.plot(rand_t, rand_inf, label='random compressed temporal', color='y', lw=2, alpha=0.6)
-    # d3 = digitize_me(rand_t, rand_inf)
-    # plt.plot(d3[0], d3[1], label='random compressed temporal', color='y', lw=2, alpha=0.6)
-    ## vertical lines to show compression
-    if plot:
-        max_infected = max(max(temp_inf), max(opt_inf), max(rand_inf)) + 10
-        plt.vlines(temporal_network.get_time_network_map().keys(), ymin=0, ymax=max_infected/3, ls=':', color='c', lw=1, alpha=0.8)
-        plt.vlines(opt_net.get_time_network_map().keys(), ymin=2*max_infected/3, ymax=max_infected, ls='-', color='m', lw=1, alpha=0.8)
-        plt.vlines(rand_net.get_time_network_map().keys(), ymin=max_infected/3, ymax=2*max_infected/3, ls='--', color='y', lw=1, alpha=0.8)
-        plt.xlabel('Time')
-        plt.ylabel('Number nodes infected')
-        plt.xticks(list(temporal_network.get_time_network_map().keys())[::4])
-        plt.legend()
+        colors = sns.color_palette("hls", 8)
+        fig, axs = plt.subplots(2, 1, sharex=True)
+        ax = axs[0]
+        ax.plot(temp_t, temp_inf, label='Temporal', color=colors[1], lw=2, alpha=0.9)
+        ax.plot(opt_t, opt_inf, label='Algorithmic', color=colors[0], lw=2, alpha=0.6, ls='--')
+        ax.plot(rand_t, rand_inf, label='Random', color=colors[6], lw=2, alpha=0.6, ls='-.')
+        ## vertical lines to show compression
+        max_infected_buffer = max(max(temp_inf), max(opt_inf), max(rand_inf)) + 2
+        ax.vlines(temporal_network.get_time_network_map().keys(), ymin=0, ymax=max_infected_buffer/3, ls=':', color=colors[1], lw=1, alpha=0.95)
+        ax.vlines(opt_net.get_time_network_map().keys(), ymin=2*max_infected_buffer/3, ymax=max_infected_buffer, ls='-', color=colors[0], lw=1, alpha=0.95)
+        ax.vlines(rand_net.get_time_network_map().keys(), ymin=max_infected_buffer/3, ymax=2*max_infected_buffer/3, ls='--', color=colors[6], lw=1, alpha=0.95)
+        # ax.xlabel('Time')
+        ax.set_ylabel('Infected nodes')
+        # ax.set_xticks(list(temporal_network.get_time_network_map().keys())[::4])
+        axs[0].legend(loc='lower right')
         # plt.show()
-        plt.subplot(212)
+        ax = axs[1]
         # plt.figure('error')
-    total_optimal_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(opt_inf))), 2)
-    total_random_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(rand_inf))), 2)
-    if plot:
-        plt.plot(opt_t, -np.array(temp_inf)+np.array(opt_inf), label=f'error from optimal: {total_optimal_error}', color='m', ls='--')
-        plt.plot(rand_t, -np.array(temp_inf)+np.array(rand_inf), label=f'error from random: {total_random_error}', color='y', ls='--')
-        plt.xlabel('time')
-        plt.ylabel('error from fully temporal')
-        plt.legend()
+        # for the plot, have it be normalized error?
+        # ax.plot(opt_t, (-np.array(temp_inf)+np.array(opt_inf))/np.array(temp_inf), label=f'Optimal: {total_optimal_error}', color=colors[0], ls='--')
+        ax.plot(opt_t, (-np.array(temp_inf)+np.array(opt_inf))/np.array(temp_inf), label=f'Algorithmic', color=colors[0], ls='--')
+        # ax.plot(rand_t, (-np.array(temp_inf)+np.array(rand_inf))/np.array(temp_inf), label=f'Random: {total_random_error}', color=colors[6], ls='-.')
+        ax.plot(rand_t, (-np.array(temp_inf)+np.array(rand_inf))/np.array(temp_inf), label=f'Random', color=colors[6], ls='-.')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Normalized error')
+        axs[1].legend()
         # plt.show()
+        plt.tight_layout()
+        # fig.set_size_inches(5,5)
     return total_optimal_error, total_random_error
 
 def run_multiple(temporal_network, t_interval, beta, number_layers, levels, iters, rand_only=False, temp_inf=None):
@@ -131,23 +130,24 @@ def run_multiple(temporal_network, t_interval, beta, number_layers, levels, iter
     if rand_only:
         rand_t, rand_inf, rand_net = run_random(temporal_network, t_interval, beta, number_layers, levels, iters)
         print(f"rand net layers {rand_net.length}")
-        total_random_error = round(np.sum(np.abs(-np.array(temp_inf) + np.array(rand_inf))), 2)
+        total_random_error = round(np.sum(np.abs((-np.array(temp_inf) + np.array(rand_inf))/np.array(temp_inf))), 2)
         return total_random_error
     else:
         temp_t, temp_inf, temp_net = run_temporal(temporal_network, t_interval, beta, number_layers, levels, iters)
         rand_t, rand_inf, rand_net = run_random(temporal_network, t_interval, beta, number_layers, levels, iters)
         opt_t, opt_inf, opt_net = run_optimal(temporal_network, t_interval, beta, number_layers, levels, iters)
-        total_optimal_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(opt_inf))), 2)
-        total_random_error = round(np.sum(np.abs(-np.array(temp_inf)+np.array(rand_inf))), 2)
+        total_optimal_error = round(np.sum(np.abs((-np.array(temp_inf)+np.array(opt_inf))/np.array(temp_inf))), 2)
+        total_random_error = round(np.sum(np.abs((-np.array(temp_inf)+np.array(rand_inf))/np.array(temp_inf))), 2)
         print(f"opt net layers {opt_net.length}")
         print(f"temp net layers {temp_net.length}")
         print(f"rand net layers {rand_net.length}")
         return total_optimal_error, total_random_error, temp_inf
 
-def experiment():
+def experiment(beta):
+    colors = sns.color_palette("hls", 8)
     this_t_interval = 4
-    this_beta = .002
-    this_number_layers = 30
+    this_beta = beta
+    this_number_layers = 20
 
     # temporal_network = random_temporal_network_mix(number_layers, t_interval, beta)
     # print(temporal_network.length)
@@ -157,12 +157,12 @@ def experiment():
     # for lev in range(5):
     this_temporal_network = random_temporal_network_mix(this_number_layers, this_t_interval, this_beta)
     iter_range = this_temporal_network.length
-    ensemble_length = 5
+    ensemble_length = 10
     random_errors = np.zeros((ensemble_length, iter_range))
     optimal_errors = np.zeros((ensemble_length, iter_range))
-    one_round(this_temporal_network, this_t_interval, this_beta, this_number_layers, levels=1, iters=19, plot=True)
+    # one_round(this_temporal_network, this_t_interval, this_beta, this_number_layers, levels=1, iters=6, plot=True)
 
-    plt.show()
+    # plt.show()
     lev = 1
     for i in range(iter_range):
         print(lev, i)
@@ -175,25 +175,91 @@ def experiment():
             random_errors[t][i] = total_rand
             optimal_errors[t][i] = _total_opt
 
-    plt.plot(np.mean(random_errors, axis=0), label='mean random', color='y')
+    plt.plot(np.mean(random_errors, axis=0), label='Mean random', color=colors[6])
     std_random = np.sqrt(np.var(random_errors, axis=0))
     above_r = np.mean(random_errors, axis=0) + std_random
     below_r = np.mean(random_errors, axis=0) - std_random
-    plt.fill_between(np.arange(iter_range), below_r, above_r, color='y', alpha=0.4)
-    plt.plot(np.mean(optimal_errors, axis=0), color='m', label='optimal')
+    plt.fill_between(np.arange(iter_range), below_r, above_r, color=colors[6], alpha=0.4)
+    plt.plot(np.mean(optimal_errors, axis=0), color=colors[0], label='Algorithmic')
     std_opt = np.sqrt(np.var(optimal_errors, axis=0))
     above_o = np.mean(optimal_errors, axis=0) + std_opt
     below_o = np.mean(optimal_errors, axis=0) - std_opt
-    plt.fill_between(np.arange(iter_range), below_o, above_o, color='m', alpha=0.4)
+    plt.fill_between(np.arange(iter_range), below_o, above_o, color=colors[0], alpha=0.4)
     # plt.xticks(np.linspace(0, iter_range+1, 10))
     # plt.xticks(list(int(np.arange(0, iter_range+1))))
     plt.xlabel('Iterations')
-    plt.ylabel('Total error against fully temporal')
-    plt.legend()
-    plt.show()
+    plt.ylabel('Total normalized error')
+    plt.xticks([0, 5, 10, 15, 19])
+    plt.legend(loc='upper left')
+    # plt.show()
 
     print(random_errors)
 
-experiment()
+def data_experiment(interval, beta, number_layers):
+    graphs = []
+    start_times = []
+    end_times = []
+    start = 28820
+    min_real_t = 28820
+    for i in range(number_layers):
+        data = socio_patterns_ex.parse_data('./tij_InVS.dat', start, interval)
+        graphs.append(data[0])
+        start_times.append(start - min_real_t)
+        end_times.append(start+interval - min_real_t)
+        graphs.append(data[1])
+        start_times.append(start+interval - min_real_t)
+        end_times.append(start+2*interval - min_real_t)
+        start += 2*interval
+    print(len(graphs))
+    all_nodes = list(graphs[0].nodes())
+    for graph in graphs:
+        all_nodes.extend(list(graph.nodes()))
+    all_nodes = set(all_nodes)
+    new_labels = {sorted(all_nodes)[i]:i for i in range(len(all_nodes))}
+    relabeled_graphs = []
+    for graph in graphs:
+        relabeled_graphs.append(nx.relabel_nodes(graph, new_labels))
+    adj_m = []
+    for graph in relabeled_graphs:
+        matrix = np.zeros((len(all_nodes), len(all_nodes)))
+        for edge in graph.edges():
+            matrix[edge[0], edge[1]] = 1
+            matrix[edge[1], edge[0]] = 1
+        check = np.sum(matrix - matrix.T)
+        if check != 0:
+            print(f'failed check on graph with sum {check}')
+        adj_m.append(matrix)
+    final_layers = []
+    for i, A in enumerate(adj_m):
+        final_layers.append(network_objects.Layer(start_time=start_times[i], end_time=end_times[i], beta=beta, A=A))
+    # graph1_nodes = data[0].nodes()
+    # graph2_nodes = data[1].nodes()
+    # Need a good method of extracting the adjacency matrix of each layer without messing up the node ordering
+    # Maybe do that via an adjacency matrix? If it gets handed a networkx graph, do the node ordering itself?
+    return final_layers
+
+
+# total_time = 1016440 - 28820
+# num_layers = 200
+# layers = data_experiment(interval=int(total_time/num_layers), beta=.000005, number_layers=int(num_layers/2))
+# one_round(network_objects.TemporalNetwork(layers), int(total_time/num_layers), .000005, len(layers), levels=1, iters=100, plot=True)
+# plt.show()
+
+# a_temporal_network = random_temporal_network_mix(20, 5, .0022)
+
+# one_round(a_temporal_network, 5, .0022, 20, levels=1, iters=10, plot=True)
+# plt.savefig("./examples/nerccsfig_1.png")
+# plt.savefig("./examples/nerccsfig_1.svg", fmt='svg')
+# plt.show()
+# plt.figure('.00001 beta')
+# experiment(beta=.00001)
+# # plt.figure('.006 beta')
+# # experiment(beta=.006)
+# plt.show()
+
+plt.plot(np.arange(10), np.arange(10), ls='--', color='k')
+plt.text(1, 6, 'placeholder')
+plt.show()
+
 
 
