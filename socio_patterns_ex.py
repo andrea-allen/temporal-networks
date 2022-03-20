@@ -7,6 +7,7 @@ import numpy as np
 import time
 import matrix_ops
 import math
+import seaborn as sns
 from scipy import stats
 from epintervene.simobjects import AbsoluteTimeNetworkSwitchSim
 from epintervene.simobjects import Simulation
@@ -521,10 +522,77 @@ def socio_patterns1():
     ensemble_temporal(layer1, layer2, intervention_time=60, max_time=100, beta=.99, gamma=.01, num_runs=100, show=True)
 
 def parse_data(filename, t_start, increment):
-    df = pd.read_csv(filename, delimiter=' ', header=None)
-    df.columns = ['t', 'i', 'j']
+    if 'Hospital' in filename:
+        df = pd.read_csv(filename, delimiter='\t', header=None)
+        df.columns = ['t', 'i', 'j', 'i_type', 'j_type']
+        df = df[['t', 'i', 'j']]
+    elif 'listcontacts' in filename:
+        df = pd.read_csv(filename, delimiter='\t', header=None)
+        df.columns = ['t', 'i', 'j']
+    else:
+        df = pd.read_csv(filename, delimiter=' ', header=None)
+        df.columns = ['t', 'i', 'j']
+    print(f'There are {len(set(df["i"]).union(set(df["j"])))} nodes')
     layer1, layer2 = produce_layers(df, t_start, increment)
     return graphOf(layer1, layer2), graphOf(layer2, layer1)
+
+def parse_data_hospital(filename, t_start, increment):
+    df = pd.read_csv(filename, delimiter='\t', header=None)
+    df.columns = ['t', 'i', 'j', 'i_type', 'j_type']
+    df = df[['t', 'i', 'j']]
+    print(f'There are {len(set(df["i"]).union(set(df["j"])))} nodes')
+    layer1, layer2 = produce_layers(df, t_start, increment)
+    return graphOf(layer1, layer2), graphOf(layer2, layer1)
+
+def dataset_statistics(filename):
+    """
+    Compute some statistics on the given temporal network
+    :param filename:
+    :return:
+    """
+    if 'Hospital' in filename:
+        df = pd.read_csv(filename, delimiter='\t', header=None)
+        df.columns = ['t', 'i', 'j', 'type_i', 'type_j']
+    elif 'listcontacts' in filename:
+        df = pd.read_csv(filename, delimiter='\t', header=None)
+        df.columns = ['t', 'i', 'j']
+    else:
+        df = pd.read_csv(filename, delimiter=' ', header=None)
+        df.columns = ['t', 'i', 'j']
+    info = {}
+    unique_timestamps = set(df['t'])
+    info['num_timestamps'] = len(unique_timestamps)
+    info['max_timestamp'] = max(unique_timestamps)
+    info['min_timestamp'] = min(unique_timestamps)
+    ## WANT: Distribution of contacts per timestamp
+    ## Distribution of frequency of the same contact
+    histo = plt.hist(df.groupby(['i', 'j']).size(), bins='auto')
+    fig, ax = plt.subplots(1, 4)
+    fig.set_size_inches(8,4)
+    ax[0].hist(df.groupby(['t']).size(), bins='auto')  # this is how many contacts per timestep
+    ax[0].semilogy()
+    ax[0].set_xlabel('Contacts (edges)\n per timestamp')
+    ax[0].set_ylabel('Distribution (log)')
+    ax[1].scatter(np.log10(np.arange(len(histo[0]))), np.log10(histo[0]), s=8, color='blue')
+    ax[1].set_xlabel('Frequency of same\n contact (log scale)')
+    ax[1].set_ylabel('Distribution (log)')
+    static_dd = df.groupby('i')['j'].nunique()
+    ax[2].hist(static_dd, color='green', alpha=0.6, density='true', label=f'<k>={np.round(np.mean(static_dd), 1)}')
+    # check: set(df.where(df['i']==122).dropna()['j'])
+    ax[2].set_xlabel('Degree in static network')
+    ax[2].set_ylabel('Distribution')
+    ax[2].legend()
+    durations = df['t'].diff(1).dropna() # really weird giant duration gap?
+    ax[3].scatter(np.arange(len(durations)), durations + 1, s=8, color='green') # +1 to make log scale work, still effectively 0
+    ax[3].semilogy()
+    ax[3].set_xlabel('Time steps \nin dataset')
+    ax[3].set_ylabel('Time between consecutive timestamps')
+    plt.tight_layout(0.1)
+    plt.show()
+
+    return info
+
+
 
 def produce_layers(df, t_start, increment):
     layer_1 = df[['i', 'j']].where((df['t'] >= t_start) & (df['t'] < t_start+increment))
@@ -532,6 +600,13 @@ def produce_layers(df, t_start, increment):
     return layer_1, layer_2
 
 def graphOf(layer, second_layer):
+    """
+    Makes a networkx graph of nodes AND EDGES from layer1, (first arugment)
+    Adds nodes from second_layer to preserve same dimensions
+    :param layer:
+    :param second_layer:
+    :return:
+    """
     layer = layer.dropna()
     layer['i'] = layer['i'].astype(int)
     layer['j'] = layer['j'].astype(int)
@@ -541,6 +616,8 @@ def graphOf(layer, second_layer):
     graph = nx.from_pandas_edgelist(layer.dropna(), 'i', 'j')
     second_layer_graph = nx.from_pandas_edgelist(second_layer.dropna(), 'i', 'j')
     graph.add_nodes_from(nx.nodes(second_layer_graph))
+    # nx.draw(graph)
+    # plt.show()
     return graph
 
 def aggregate(df, t_a, t_b):

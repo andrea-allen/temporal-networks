@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 import deterministic
+import random
+
 
 ### Goal here is to start with a series of 10-12 networks
 ### then compress them pairwise by computing E for successive pairs
@@ -21,24 +23,28 @@ import deterministic
 # and iterate on the E approximation to make it better and cleaner. Go back and forth between the processes.
 ## Function for creating networks:
 def new_matexp_approximation(X, Y, t, beta):
-    A = beta*t/2*X
-    B = beta*t/2*Y
+    A = beta * t / 2 * X
+    B = beta * t / 2 * Y
     N = len(A)
     I = np.identity(N)
-    P0 = np.full(N, 1/N)
+    P0 = np.full(N, 1 / N)
     # error = (-1*I) - (A @ B) - (1/12)*(B@B@A) - (1/3)*(B@A@B) - (1/12)*(A@B@B) - (1/3)*(A@B@A) - (1/12)*(A@A@B) \
     #         + (1/4)*(B@A@A) + (1/2)*(A@A) + (1/2)*(B@B) + (1/6)*(A@A@A) + (1/6)*(B@B@B)
-    error = compute_Z(X, Y, t, beta) - (A + B) #- (((A+B)@(A+B))/2 + ((A+B)@(A+B)@(A+B))/6) + ((B+A + (1/2)*(B@A - A@B))@(B+A + (1/2)*(B@A - A@B)))/2 - (((1/2)*(B@A - A@B))@((1/2)*(B@A - A@B)))/2
+    error = compute_Z(X, Y, t, beta) - (
+                A + B)  # - (((A+B)@(A+B))/2 + ((A+B)@(A+B)@(A+B))/6) + ((B+A + (1/2)*(B@A - A@B))@(B+A + (1/2)*(B@A - A@B)))/2 - (((1/2)*(B@A - A@B))@((1/2)*(B@A - A@B)))/2
     # error = scipy.linalg.expm(compute_Z(A, B, t, beta)).dot(P0) - scipy.linalg.expm(compute_Z(A, B, t, beta)).dot(P0)
     total_infect_diff = np.sum(np.abs(error) @ P0)
     return total_infect_diff
+
 
 def compute_Z(X, Y, t, beta):
     ## Compute Z to third order matrix products
     A = beta * t / 2 * X
     B = beta * t / 2 * Y
-    Z = B + A + (1/2)*(B@A-A@B) + (1/12)*(B@B@A + A@A@B + A@B@B + B@A@A) - (1/6)*(B@A@B + A@B@A)
+    Z = B + A + (1 / 2) * (B @ A - A @ B) + (1 / 12) * (B @ B @ A + A @ A @ B + A @ B @ B + B @ A @ A) - (1 / 6) * (
+                B @ A @ B + A @ B @ A)
     return Z
+
 
 def erdos_renyi_graph(N, p):
     G1 = nx.generators.erdos_renyi_graph(n=N, p=p)
@@ -48,8 +54,9 @@ def erdos_renyi_graph(N, p):
     # plt.show()
     return G1, adj_1
 
+
 def configuration_model_graph(N):
-    degree_distribution = [0, 10 / 100, 85 / 100, 0/100, 0, 0, 0, 0 / 100, 0, 0, 0, 0, 5/100]
+    degree_distribution = [0, 20 / 100, 65 / 100, 0 / 100, 0, 0, 0, 10 / 100, 0, 0, 0, 0, 5 / 100]
     got_config_model = False
     while not got_config_model:
         try:
@@ -62,14 +69,51 @@ def configuration_model_graph(N):
     config_adj = np.array(nx.adjacency_matrix(config_model).todense())
     return config_model, config_adj
 
+
+def sbm(N, groups, probs):
+    G = nx.Graph()
+    G.add_nodes_from(np.arange(N))
+    node_groups = {g: [] for g in range(groups)}
+    nodes_per_group = int(N / groups)
+    blocks = []
+    for g in range(groups):
+        for n in range(g * nodes_per_group, (g + 1) * nodes_per_group):
+            node_groups[g].append(n)
+        # H = nx.Graph()
+        # H.add_nodes_from(node_groups[g])
+        H = nx.generators.erdos_renyi_graph(nodes_per_group, probs[g])
+        H_nodes = list(H.nodes())
+        label_map = {H_nodes[i]: node_groups[g][i] for i in range(nodes_per_group)}
+        H = nx.relabel_nodes(H, label_map)
+        blocks.append(H)
+    for block in blocks:
+        # G.add_nodes_from(block.nodes())
+        G.add_edges_from(block.edges())
+    for g in range(groups):
+        for j in range(g, groups):
+            try:
+                p = probs[(g, j)]
+                for n in node_groups[g]:
+                    for m in node_groups[j]:
+                        flip_coin = random.random()
+                        if flip_coin < p:
+                            G.add_edge(n, m)
+            except KeyError:
+                print(g, j)
+                pass
+    adj = np.array(nx.adjacency_matrix(G).todense())
+    return G, adj
+
+
 def cycle_graph(N):
     G3 = nx.generators.cycle_graph(n=N)
     G3.add_nodes_from(np.arange(N))
     Cycle_adj = np.array(nx.adjacency_matrix(G3).todense())
     return G3, Cycle_adj
 
+
 def barbell_graph(N):
-    G = nx.generators.barbell_graph(int(N/2), 0)
+    G = nx.generators.barbell_graph(int(N / 2), 0)
     adj = np.array(nx.adjacency_matrix(G).todense())
     return G, adj
 
@@ -264,6 +308,3 @@ def barbell_graph(N):
 # Make 2 assertions: this pair IS compressed/ranked
 # this pair is not compressed
 # then, in a DIFFERENT test, measure the error, and use a static (non-random) network here.
-
-
-

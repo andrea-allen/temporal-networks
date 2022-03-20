@@ -5,31 +5,26 @@ from network_objects import Compressor
 
 class TemporalNetworkTests(unittest.TestCase):
 
-    def test_get_ordered_pairs_even(self):
+    def test_get_ordered_pairs_odd(self):
         temporal_net = TemporalNetwork(['a', 'b', 'c', 'd', 'e', 'f'])
         pairs = temporal_net.get_ordered_pairs()
         self.assertEqual(pairs[0], ('a', 'b'))
-        self.assertEqual(pairs[1], ('c', 'd'))
-        self.assertEqual(pairs[2], ('e', 'f'))
-        self.assertEqual(len(pairs), 3)
+        self.assertEqual(pairs[1], ('b', 'c'))
+        self.assertEqual(pairs[2], ('c', 'd'))
+        self.assertEqual(pairs[3], ('d', 'e'))
+        self.assertEqual(pairs[4], ('e', 'f'))
+        self.assertEqual(len(pairs), 5)
 
-    def test_get_ordered_pairs_odd(self):
+    def test_get_ordered_pairs_even(self):
         temporal_net = TemporalNetwork(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
         pairs = temporal_net.get_ordered_pairs()
         self.assertEqual(pairs[0], ('a', 'b'))
-        self.assertEqual(pairs[1], ('c', 'd'))
-        self.assertEqual(pairs[2], ('e', 'f'))
-        self.assertEqual(pairs[3], 'g')
-        self.assertEqual(len(pairs), 4)
-
-    def test_get_ordered_pairs_shift(self):
-        temporal_net = TemporalNetwork(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
-        pairs = temporal_net.get_ordered_pairs(shift=True)
-        self.assertEqual(pairs[0], 'a')
         self.assertEqual(pairs[1], ('b', 'c'))
-        self.assertEqual(pairs[2], ('d', 'e'))
-        self.assertEqual(pairs[3], ('f', 'g'))
-        self.assertEqual(len(pairs), 4)
+        self.assertEqual(pairs[2], ('c', 'd'))
+        self.assertEqual(pairs[3], ('d', 'e'))
+        self.assertEqual(pairs[4], ('e', 'f'))
+        self.assertEqual(pairs[5], ('f', 'g'))
+        self.assertEqual(len(pairs), 6)
 
     def test_equals(self):
         # SETUP
@@ -88,9 +83,9 @@ class CompressorTests(unittest.TestCase):
         B2 = Layer(4, 5, .5, array_two)
         temporal_net = TemporalNetwork([A, A2, B, B2])
         # ACT
-        compressed_net = Compressor.compress(temporal_net, level=2)
+        compressed_net, error_chosen = Compressor.compress(temporal_net, how='optimal')
         # ASSERT
-        self.assertTrue(TemporalNetwork([Layer(1, 3, .5, array_one), Layer(3, 5, .5, array_two)]).equals(compressed_net))
+        self.assertTrue(TemporalNetwork([Layer(1, 3, .5, array_one), B, B2]).equals(compressed_net))
 
     def test_compress(self):
         # SETUP
@@ -102,16 +97,16 @@ class CompressorTests(unittest.TestCase):
                             [0, 1, 0]])
         A = Layer(1, 2, .5, array_one)
         A2 = Layer(2, 3, .5, array_one)
+        B = Layer(3, 4, .5, array_two)
+        B2 = Layer(4, 5, .5, array_two)
         A3 = Layer(5, 6, .5, array_one)
+        B3 = Layer(6, 7, .5, array_two)
         A4 = Layer(7, 8, .5, array_one)
         A5 = Layer(8, 9, .5, array_one)
-        B = Layer(3, 4, .5,array_two)
-        B2 = Layer(4, 5, .5,array_two)
-        B3 = Layer(6, 7, .5,array_two)
         temporal_net = TemporalNetwork([A, A2, B, B2, A3, B3, A4, A5])
         combined_layer = Layer(1,3, .5, (A.A+B.A)/2)
         # ACT
-        compressed_net = Compressor.compress(temporal_net, level=3)
+        compressed_net, error_chosen = Compressor.compress(temporal_net, iterations=3, how='optimal')
         # ASSERT
         self.assertTrue(TemporalNetwork([Layer(1, 3, .5, array_one),
                                          Layer(3, 5, .5, array_two),
@@ -137,7 +132,7 @@ class CompressorTests(unittest.TestCase):
         B4 = Layer(9, 10, .5, array_two)
         temporal_net = TemporalNetwork([A, A2, B, B2, A3, B3, A4, A5, B4])
         # ACT
-        compressed_net = Compressor.compress(temporal_net, level=3)
+        compressed_net, error_chosen = Compressor.compress(temporal_net, iterations=3, how='optimal')
         # ASSERT
         self.assertTrue(TemporalNetwork([Layer(1,3,.5,array_one),
                                          Layer(3,5,.5,array_two),
@@ -172,12 +167,12 @@ class CompressorTests(unittest.TestCase):
                                                    Layer(7, 8, .5, array_two),
                                                    Layer(8, 10, .5, array_one)])
         # ACT
-        compressed_net = Compressor.compress(temporal_net, level=3)
+        compressed_net, total_error = Compressor.compress(temporal_net, iterations=3, how='optimal')
         # ASSERT
         self.assertTrue(expected_compressed_net.equals(compressed_net))
 
         # ACT
-        compressed_net = Compressor.compress(temporal_net, level=4)
+        compressed_net, total_error = Compressor.compress(temporal_net, iterations=4, how='optimal')
         # ASSERT
         self.assertTrue(TemporalNetwork([
             Layer(1, 2, .5, array_two),
@@ -212,33 +207,61 @@ class CompressorTests(unittest.TestCase):
         temporal_net = TemporalNetwork([A, B, C, D, E, F])
 
         # ACT
-        compressed_net_once = Compressor.compress(temporal_net, level=2)
+        compressed_net_once, _ = Compressor.compress(temporal_net, how='optimal')
         # ASSERT
+        # should_be_network = TemporalNetwork([Layer(1, 3, 0.8, some_array),
+        #                                      C, D,
+        #                                      E, F])
+        # Compresses the middle error based on the median strategy
         should_be_network = TemporalNetwork([Layer(1, 3, 0.8, some_array),
-                                             Layer(3,5, 0.8, other_array),
+                                             C, D,
                                              E, F])
-        alt_should_be = TemporalNetwork([A, B,
-                                        Layer(3,5, 0.8, other_array),
-                                        Layer(5,7, 0.8, some_array)])
-        alt_should_be_2 = TemporalNetwork([Layer(1, 3, 0.8, some_array),
-                                         C, D,
-                                         Layer(5, 7, 0.8, some_array)])
-        self.assertTrue(should_be_network.equals(compressed_net_once) or alt_should_be.equals(compressed_net_once)
-                        or alt_should_be_2.equals(compressed_net_once))
+        self.assertTrue(should_be_network.equals(compressed_net_once))
 
         # ACT (compress again)
-        compressed_net_twice = Compressor.compress(compressed_net_once, level=2)
+        compressed_net_twice, _ = Compressor.compress(compressed_net_once, how='optimal')
 
         # ASSERT
-        if compressed_net_once.equals(should_be_network):
-            self.assertTrue(compressed_net_twice.equals(TemporalNetwork([Layer(1,5, 0.8, (some_array+other_array)/2),
-                                                                         Layer(5,6,.8,some_array)])))
-        if compressed_net_once.equals(alt_should_be):
-            self.assertTrue(compressed_net_twice.equals(TemporalNetwork([Layer(1,3, 0.8, some_array),
-                                                                         Layer(3, 7,.8,(some_array+other_array)/2)])))
-        if compressed_net_once.equals(alt_should_be_2):
-            self.assertTrue(compressed_net_twice.equals(TemporalNetwork([Layer(1,4, 0.8, (2*some_array+other_array)/3),
-                                                                         Layer(4,7,.8,(2*some_array+other_array)/3)])))
+        should_be_network = TemporalNetwork([
+            Layer(1, 3, 0.8, some_array),
+            Layer(3,5, 0.8, other_array),
+            E, F
+        ])
+        self.assertTrue(should_be_network.equals(compressed_net_twice))
+
+    def test_compress_evenly(self):
+        # SETUP
+        some_array = np.array([[0, 1, 0, 1],
+                            [1, 0, 1, 0],
+                            [0, 1, 0, 0],
+                            [1, 0, 0, 0]])
+        other_array = np.array([[0, 0, 0, 1],
+                            [0, 0, 2, 0],
+                            [0, 2, 0, 0],
+                            [1, 0, 0, 0]])
+        A = Layer(1, 2, 0.8,
+                  some_array)
+        B = Layer(2, 3, 0.8,
+                  some_array)
+        C = Layer(3, 4, 0.8,
+                  other_array)
+        D = Layer(4, 5, 0.8,
+                  other_array)
+        E = Layer(5, 6, 0.8,
+                  some_array)
+        F = Layer(6, 7, 0.8,
+                  some_array)
+        temporal_net = TemporalNetwork([A, B, C, D, E, F])
+
+        # ACT
+        compressed_net = Compressor.compress(temporal_net, iterations=3, how='even')
+        # ASSERT
+        should_be_network = TemporalNetwork([Layer(1,3, 0.8, some_array),
+                                             Layer(3,5, 0.8, other_array),
+                                             Layer(5,7, 0.8, some_array)])
+
+        # ASSERT
+        self.assertTrue(compressed_net.equals(should_be_network))
 
     def test_compress_iteratively(self):
         # SETUP
@@ -265,11 +288,13 @@ class CompressorTests(unittest.TestCase):
         temporal_net = TemporalNetwork([A, B, C, D, E, F])
 
         # ACT
-        compressed_net_twice = Compressor.compress(temporal_net, level=2, optimal=True, iterations=2)
+        compressed_net_level2, _ = Compressor.compress(temporal_net, iterations=2, how='optimal')
+        compressed_net_again, _ = Compressor.compress(compressed_net_level2, iterations=2, how='optimal')
+
+        compressed_level2_twice, _ = Compressor.compress(temporal_net, iterations=4, how='optimal')
 
         # ASSERT
-        self.assertTrue(compressed_net_twice.equals(TemporalNetwork([Layer(1, 4, 0.8, (2 * some_array + other_array) / 3),
-                                                         Layer(4, 7, .8, (2 * some_array + other_array) / 3)])))
+        self.assertTrue(compressed_net_again.equals(compressed_level2_twice))
 
 
 
@@ -373,24 +398,15 @@ class CompressorTests(unittest.TestCase):
         temporal_net = TemporalNetwork([A, B, C, D])
 
         # ACT
-        compressed_net = Compressor.compress(temporal_net, level=2)
-        should_be_network = TemporalNetwork([Layer(1, 3, 0.8, (A.A+B.A)/2),
-                                             Layer(3, 5, 0.8, same_array)])
+        compressed_net, _ = Compressor.compress(temporal_net, iterations=2, how='optimal')
+        should_be_network = TemporalNetwork([Layer(1, 2, 0.8, A.A),
+                                             Layer(2, 5, 0.8, same_array)])
         should_not_be = TemporalNetwork([Layer(1, 2, 0.8, (A.A+B.A)/2),
                                         Layer(3, 4, 0.8, same_array)])
 
         # ASSERT
         self.assertTrue(should_be_network.equals(compressed_net))
         self.assertFalse(should_not_be.equals(compressed_net))
-        # SECOND ACT (level=1)
-        compressed_net = Compressor.compress(temporal_net, level=1)
-        could_be_network_1 = TemporalNetwork([A,
-                                             Layer(2, 3, 0.8, same_array),
-                                             D])
-        could_be_network_2 = TemporalNetwork([A,B,
-                                             Layer(3, 5, 0.8, same_array)])
-        # ASSERT
-        self.assertTrue(could_be_network_1.equals(compressed_net) or could_be_network_2.equals(compressed_net))
 
     def test_total_aggregate(self):
         # Test that compressing at level 1, length layers iterations, gives the total sum normalized
@@ -423,18 +439,12 @@ class CompressorTests(unittest.TestCase):
 
         # ACT
         # optimal
-        compressed_net = Compressor.compress(temporal_net, level=1, optimal=True, iterations=5)
+        compressed_net, _ = Compressor.compress(temporal_net, iterations=5, how='optimal')
         # random
-        random_net = Compressor.compress(temporal_net, level=1, optimal=False, iterations=5)
-        random_net2 = Compressor.compress(temporal_net, level=1, optimal=False, iterations=5)
-        random_net3 = Compressor.compress(temporal_net, level=1, optimal=False, iterations=5)
+        even_net = Compressor.compress(temporal_net, iterations=5, how='even')
 
         # ASSERT
         self.assertTrue(np.array_equal(compressed_net.layers[0].A, (some_array+other_array+third_array+other_array
                                                                     +some_array+some_array)/6))
-        self.assertTrue(np.array_equal(random_net.layers[0].A, (some_array + other_array + third_array + other_array
+        self.assertTrue(np.array_equal(even_net.layers[0].A, (some_array + other_array + third_array + other_array
                                                                     + some_array + some_array) / 6))
-        self.assertTrue(np.array_equal(random_net2.layers[0].A, (some_array + other_array + third_array + other_array
-                                                                + some_array + some_array) / 6))
-        self.assertTrue(np.array_equal(random_net3.layers[0].A, (some_array + other_array + third_array + other_array
-                                                                + some_array + some_array) / 6))

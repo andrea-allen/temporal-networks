@@ -1,4 +1,6 @@
 import numpy as np
+import time
+import scipy.linalg as sl
 
 
 class TemporalNetwork:
@@ -10,17 +12,8 @@ class TemporalNetwork:
         self.layers = layers
         self.length = len(layers)
 
-    def get_ordered_pairs(self, shift=False):
-        pairs = list([(self.layers[i], self.layers[i + 1]) for i in range(0, len(self.layers) - 1, 2)])
-        if self.length % 2 == 0:
-            return pairs
-        else:
-            if not shift:
-                pairs.append(self.layers[-1])
-                return pairs
-            if shift:
-                pairs = [self.layers[0]]
-                pairs.extend(list([(self.layers[i], self.layers[i + 1]) for i in range(1, len(self.layers) - 1, 2)]))
+    def get_ordered_pairs(self):
+        pairs = list([(self.layers[i], self.layers[i + 1]) for i in range(0, len(self.layers) - 1)])
         return pairs
 
     def get_time_network_map(self):
@@ -46,8 +39,10 @@ class Layer:
         self.start_time = start_time
         self.end_time = end_time
         self.A = A
+        self.N = len(self.A)
         self.beta = beta
         self.duration = self.end_time - self.start_time
+        self.dd_normalized = self.set_dd_dist()
 
     def scaled_matrix(self):
         return self.beta * (self.end_time - self.start_time) * self.A
@@ -57,128 +52,189 @@ class Layer:
                and self.beta == another_layer.beta and self.duration == another_layer.duration \
                and np.array_equal(self.A, another_layer.A)
 
+    def set_dd_dist(self):
+        dd = np.array([np.sum(self.A[i]) / self.N for i in range(self.N)])
+        if np.sum(dd)==0:
+            return dd
+        dd = dd / np.sum(dd)
+        return dd
+
 
 class Compressor:
     @staticmethod
-    def compress(temporal_net, level, optimal=True, iterations=1):
+    def compress(temporal_net, iterations=1, how='even', error_type='combined'):
         """
         Takes an ordered list of pairs and returns the compressed versions. Sole layers are returned as-is.
+        :param error_type: 'terminal' or 'halftime' or 'combined' (default, best)
+        :param how: 'optimal' or 'even'
         :param iterations: how many rounds of compression to perform
-        :param optimal: Use optimal compression algorithm, otherwise random
         :param temporal_net: TemporalNetwork object
-        :param level: int, number of pairs to compress
         :return: Ordered list of layer pairs or singles
         """
-        current_net = temporal_net
-        for r in range(iterations):
-            new_net = Compressor._compress_round(current_net, level, optimal)
-            current_net = new_net
-        return current_net
-
-    @staticmethod
-    def _compress_round(temporal_net, level, optimal):
-        if optimal:
-            new_networks = Compressor._optimal_compression(temporal_net, level)
-            return TemporalNetwork(new_networks)
-        else:
-            new_networks = Compressor._random_compression(temporal_net, level)
-            return TemporalNetwork(new_networks)
-
-    @staticmethod
-    def _optimal_compression(temporal_net, level):
-        if level==1:
-            nonshift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=0))
-            shift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=1))
-            best_key_nonshift = min(nonshift_epsilons, key=nonshift_epsilons.get)
-            best_key_shift = min(shift_epsilons, key=shift_epsilons.get)
-            if shift_epsilons[best_key_shift] < nonshift_epsilons[best_key_nonshift]:
-                best_key = best_key_shift
-                pairs = temporal_net.get_ordered_pairs(shift=1)
-            else:
-                best_key = best_key_nonshift
-                pairs = temporal_net.get_ordered_pairs(shift=0)
-
-            new_networks = []
-            pairs_to_compress = []
-            pairs_to_compress.append(pairs[best_key])
-            for pair in pairs:
-                if pair in pairs_to_compress:
-                    new_networks.append(Compressor.aggregate(pair[0], pair[1]))
-                else:
-                    try:
-                        new_networks.extend([pair[0], pair[1]])
-                    except TypeError:
-                        new_networks.extend([pair])
+        to_compress = int(iterations)
+        if how.lower() == 'even':
+            desired_num_layers = temporal_net.length - to_compress
+            new_networks = TemporalNetwork(Compressor._even_compression(temporal_net, desired_num_layers))
             return new_networks
-
-        #### shifting, for higher level
-        # combine these later
-        nonshift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=0))
-        shift_epsilons = Compressor.pairwise_epsilon(temporal_net.get_ordered_pairs(shift=1))
-        if sum(nonshift_epsilons.values()) > sum(shift_epsilons.values()):
-            epsilon_values = shift_epsilons
-            pairs = temporal_net.get_ordered_pairs(shift=1)
-        else:
-            epsilon_values = nonshift_epsilons
-            pairs = temporal_net.get_ordered_pairs(shift=0)
-        new_networks = []
-        pairs_to_compress = []
-        while len(pairs_to_compress) < level and len(epsilon_values) > 0:
-            best_key = min(epsilon_values, key=epsilon_values.get)
-            pairs_to_compress.append(pairs[best_key])
-            epsilon_values.pop(best_key)
-        for pair in pairs:
-            if pair in pairs_to_compress:
-                new_networks.append(Compressor.aggregate(pair[0], pair[1]))
-            else:
-                try:
-                    new_networks.extend([pair[0], pair[1]])
-                except TypeError:
-                    new_networks.extend([pair])
-        return new_networks
+        current_net = temporal_net
+        total_chosen_error = 0
+        for r in range(iterations):
+            new_net, chosen_error = Compressor._compress_round(current_net, how, error_type)
+            current_net = new_net
+            total_chosen_error += chosen_error
+        return current_net, total_chosen_error
 
     @staticmethod
-    def _random_compression(temporal_net, level):
-        # TODO: level might be required to be 1
-        random_idx = np.random.randint(0, temporal_net.length-1)
-        # random_pair_idxs = np.random.choice(list(np.arange(temporal_net.length-1)), size=level, replace=False)
+    def _compress_round(temporal_net, how, error_type):
+        if how.lower() == 'optimal':
+            new_networks, chosen_error = Compressor._optimal_compression(temporal_net, error_type)
+            return TemporalNetwork(new_networks), chosen_error
+        elif how.lower() == 'random':
+            new_networks = Compressor._random_compression(temporal_net)
+            return TemporalNetwork(new_networks)
+
+    @staticmethod
+    def _optimal_compression(temporal_net, error_type='terminal'):
+        all_pairs = temporal_net.get_ordered_pairs()
+        epsilons = Compressor.pairwise_epsilon(all_pairs, error_type)
+        best_keys = [key for (key, val) in epsilons.items() if val == min(epsilons.values())]
+        best_key = best_keys[0]
+        # print(f"selecting best key {best_key} with epsilon {min(epsilons.values())}")
+        chosen_error = min(epsilons.values())
+        # print(f"num best keys was {len(best_keys)}")
+        pairs = all_pairs
+        new_networks = []
+        layers_getting_compressed = [pairs[best_key][0]]
+        the_layers = temporal_net.layers
+        for id, layer in enumerate(temporal_net.layers):
+            if the_layers[id] in layers_getting_compressed:
+                new_networks.append(Compressor.aggregate(the_layers[id], the_layers[id+1]))
+            elif the_layers[id-1] not in layers_getting_compressed:
+                new_networks.append(the_layers[id])
+        return new_networks, chosen_error
+
+    @staticmethod
+    def _random_compression(temporal_net):
+        random_idx = np.random.randint(0, temporal_net.length - 1)
         new_networks = []
         for idx, layer in enumerate(temporal_net.layers):
             if idx == random_idx:
-                new_networks.append(Compressor.aggregate(temporal_net.layers[idx], temporal_net.layers[idx+1]))
-            if idx-1 == random_idx:
+                new_networks.append(Compressor.aggregate(temporal_net.layers[idx], temporal_net.layers[idx + 1]))
+            if idx - 1 == random_idx:
                 pass
             elif idx != random_idx:
                 new_networks.append(temporal_net.layers[idx])
         return new_networks
 
     @staticmethod
-    def pairwise_epsilon(pairs):
+    def _even_compression(temporal_net, desired_num_layers):
+        new_networks = []
+        layers_boundaries = list([int(i) for i in np.linspace(0, temporal_net.length, desired_num_layers + 1)])
+        # 0 20 40 60 for a 60 layer network
+        idx = 0
+        for b in range(len(layers_boundaries) - 1):
+            current_aggregate = temporal_net.layers[layers_boundaries[b]]
+            idx += 1
+            while idx < layers_boundaries[b + 1]:
+                current_aggregate = Compressor.aggregate(current_aggregate, temporal_net.layers[idx])
+                idx += 1
+            new_networks.append(current_aggregate)
+        return new_networks
+
+    @staticmethod
+    def pairwise_epsilon(pairs, error_type='terminal'):
         epsilon_values = {}
         for idx, pair in enumerate(pairs):
             try:
-                epsilon = Compressor.epsilon(pair[0], pair[1])
+                epsilon = Compressor.epsilon(pair[0], pair[1], error_type)
                 epsilon_values[idx] = epsilon
             except TypeError:
                 pass  # if pair is a single
         return epsilon_values
 
-
     @staticmethod
     def aggregate(layer, other):
         total_duration = other.end_time - layer.start_time
-        new_adjacency_matrix = ((layer.end_time-layer.start_time)*layer.A
-                                + (other.end_time-other.start_time)*other.A) / total_duration
+        new_adjacency_matrix = ((layer.end_time - layer.start_time) * layer.A
+                                + (other.end_time - other.start_time) * other.A) / total_duration
         return Layer(layer.start_time, other.end_time, layer.beta, new_adjacency_matrix)
 
     @staticmethod
-    def epsilon(layer, other):
-        A = layer.scaled_matrix()
-        B = other.scaled_matrix()
-        N = len(A)
-        P0 = np.full(N, 1 / N)
-        Z = B + A + (1 / 2) * (B @ A - A @ B) + (1 / 12) * (B @ B @ A + A @ A @ B + A @ B @ B + B @ A @ A) - (1 / 6) * (
-                B @ A @ B + A @ B @ A)
-        error = Z - (A + B)
+    def epsilon(layer, other, error_type='terminal'):
+        if error_type.lower() == 'combined':
+            A = layer.scaled_matrix()
+            B = other.scaled_matrix()
+
+            #######
+            BA = B @ A
+            AB = A @ B
+            error_terminal = (1 / 2) * (BA - AB) \
+                    + (1 / 12) * ((B @ BA) + (A @ AB)
+                                  + (A @ (B @ B)) + (B @ (A @ A))) \
+                    - (1 / 6) * ((B @ AB) + (A @ BA))
+            P0 = layer.dd_normalized
+
+            e_terminal = np.sum(np.abs(error_terminal).dot(P0))
+
+            agg_mat = (layer.duration * layer.A + other.duration*other.A)/(layer.duration+other.duration)
+            # full_agg = sl.expm(layer.beta * layer.duration * agg_mat) #FULL MATRIX
+            #### APPROXIMATIONS
+            # A_scaled = layer.beta * layer.duration * layer.A
+            approx_A_temp = A + (A@A)/2 + (A@A@A)/6 \
+                            # + (A_scaled@A_scaled@A_scaled@A_scaled)/24 \
+                            # + (A_scaled@A_scaled@A_scaled@A_scaled@A_scaled)/(5*24)
+            agg_scaled = layer.beta * layer.duration * agg_mat
+            approx_Agg = agg_scaled + (agg_scaled@agg_scaled)/2 + (agg_scaled@agg_scaled@agg_scaled)/6 \
+                         # + (agg_scaled@agg_scaled@agg_scaled@agg_scaled)/24 \
+                         # + (agg_scaled@agg_scaled@agg_scaled@agg_scaled@agg_scaled)/(5*24)
+            D = approx_A_temp - approx_Agg
+
+            ######
+            # D = (full_A_temp - full_agg) #FULL MATRIX
+            error = D
+            e_halftime = np.sum(np.abs(error).dot(P0))
+            if np.isnan(e_terminal) or np.isnan(e_halftime):
+                print('STOP')
+            if e_halftime > 0 and e_terminal==0:
+                print(f'halftime: {e_halftime}, terminal: {e_terminal}')
+            return (e_halftime + e_terminal) * (layer.duration+other.duration)
+
+        elif error_type.lower()=='terminal':
+            A = layer.scaled_matrix()
+            B = other.scaled_matrix()
+
+            #######
+            BA = B @ A
+            AB = A @ B
+            error = (1 / 2) * (BA - AB) \
+                    + (1 / 12) * ((B @ BA) + (A @ AB)
+                                  + (A @ (B @ B)) + (B @ (A @ A))) \
+                    - (1 / 6) * ((B @ AB) + (A @ BA))
+            ########
+        elif error_type.lower()=='halftime':
+            # Using full matexp
+            # full_A_temp = sl.expm(layer.beta * layer.duration * layer.A) #FULL MATRIX
+            agg_mat = (layer.duration * layer.A + other.duration*other.A)/(layer.duration+other.duration)
+            # full_agg = sl.expm(layer.beta * layer.duration * agg_mat) #FULL MATRIX
+            #### APPROXIMATIONS
+            A_scaled = layer.beta * layer.duration * layer.A
+            approx_A_temp = A_scaled + (A_scaled@A_scaled)/2 + (A_scaled@A_scaled@A_scaled)/6 \
+                            # + (A_scaled@A_scaled@A_scaled@A_scaled)/24 \
+                            # + (A_scaled@A_scaled@A_scaled@A_scaled@A_scaled)/(5*24)
+            agg_scaled = layer.beta * layer.duration * agg_mat
+            approx_Agg = agg_scaled + (agg_scaled@agg_scaled)/2 + (agg_scaled@agg_scaled@agg_scaled)/6 \
+                         # + (agg_scaled@agg_scaled@agg_scaled@agg_scaled)/24 \
+                         # + (agg_scaled@agg_scaled@agg_scaled@agg_scaled@agg_scaled)/(5*24)
+            D = approx_A_temp - approx_Agg
+
+            ######
+            # D = (full_A_temp - full_agg) #FULL MATRIX
+            error = D
+            #############
+
+        P0 = layer.dd_normalized
+
         total_infect_diff = np.sum(np.abs(error).dot(P0))
+        total_infect_diff = total_infect_diff * (layer.duration+other.duration)
+
         return total_infect_diff
